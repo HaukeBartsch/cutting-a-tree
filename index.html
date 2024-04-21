@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="H.B.">
+    <title>Cutting a tree experiment</title>
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <!-- Include the MathBox CSS: -->
+    <link rel="stylesheet" href="css/mathbox.css"/>
+
+</head>
+  <body>
+    <div class="container">
+      <div class="row">
+        <h2>Cutting a graph (until it hurts)</h2>
+        <p>Assume a graph with 2 labelled nodes (called "arterious" and "venous") and N-2 additional (unlabelled) nodes. Unlabelled nodes borrow their node types from nodes they have a connection with. How many edges can we cut to keep a <i>balanced</i> node assignment?</p>
+        <p>How balanced a graph is is calculated using a regional occupancy score. Each region is defined using an octree, a sub-divition of the volume into 8 equal sized regions (recursively). Each region's occupancy score is calculated as the difference between the number of arterial to venous nodes. For a balanced region there is an equal number of arterial and venous nodes with an occupancy score of 0. Occupancy scores greater than 0 represent imbalance.</p>
+        <p>As a simple example we load a graph (DLA1). The graph is stored in two csv files, one for the nodes (points in 3D space) the other for the edges (pair of indices into the points array).</p>
+        <p>Each node can be either "none", "venous" (blue), or of type "arterial" (red). We draw colored bounding boxes for each of the octree-levels. The color of a bounding box corresponds to the occupancy score (amount of arterial nodes, yellow to dark red).</p>
+        <p>Each "Step" the algorithm removes an edge as long as the summed occupancy score is equal or gets smaller compared to before.</p>
+      </div>
+      <div class="row">
+        <div id="graph01" style="width: 900px; height: 600px; border: 1px solid grey;"></div>
+        <div  style="margin-bottom: 20px; margin-top: 5px;">
+          <button class="btn btn-sm btn-primary" id="step" title="Try to remove a single edge - if occupancy score is same or smaller and the graph is still fully connected.">Step</button>
+          <button class="btn btn-sm btn-primary" id="step10" title="Same as Step but 10 times.">Step 10</button>
+        </div>
+        <p>Summed occupancy score:
+          <span id="occupancy_score"></span></br>
+        Number of vertices left:
+            <span id="num_vertices"></span>
+        </p>
+      </div>
+      <div class="row">
+        <h5>Limitations</h5>
+        <p>The example above is not well suited to an octree because the bounding box that includes all nodes is not a cube. Smaller sub-divisions are therefore only containing a single node type, based on how the example data was created (artificial imbalance). We restrict the occupancy score to some larger levels of the octree to prevent this from having an impact.</p>
+        <hr>
+      </div>
+    </div>
+
+    <script src="js/jquery-3.7.1.min.js"></script>
+    <script src="js/popper.min.js"></script>
+    <script src="js/bootstrap.bundle.min.js"></script>
+
+    <!-- Install your choice of three.js version from CDN: -->
+    <script type="text/javascript"  src="js/three.min.js"></script>
+
+    <!-- Load a Controls instance, making sure that the version matches the Three.js version above: -->
+    <script type="text/javascript" src="js/OrbitControls.js"></script>
+
+    <!-- Install the latest MathBox, either mathbox.js or mathbos.min.js -->
+    <script type="text/javascript" src="js/mathbox.js"></script>
+    <script src="js/all.js"></script>
+
+  </body>
+</html>
+
+
+
+
