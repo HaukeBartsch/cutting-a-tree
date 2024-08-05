@@ -16,6 +16,8 @@ We switch on verbose mode and remove 10 edges from the graph. Edges and nodes ar
 
 > [!NOTE] Please notice that the edge indices are incremental, e.g. you need to remove the first one before you can use the index of the second entry etc..
 
+![example run](https://github.com/HaukeBartsch/cutting-a-tree/raw/main/speed/images/example_run.gif)
+
 ## How it works
 
 Assumption: All edges are the same irrespective of parameters like length and thickness.
