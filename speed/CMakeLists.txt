@@ -27,7 +27,8 @@ ENDIF()
 # Boost
 set(boost_min_ver 1.50.0)
 set(boost_libs system filesystem timer date_time program_options)
-find_package(Boost ${boost_min_ver})
+find_package(Boost CONFIG)
+#find_package(Boost ${boost_min_ver})
 
 if(Boost_FOUND)
   find_package(Boost ${boost_min_ver} COMPONENTS ${boost_libs})
