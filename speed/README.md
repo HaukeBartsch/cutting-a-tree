@@ -15,7 +15,7 @@ Here is an example on how to call prune:
 We switch on verbose mode and remove 10 edges from the graph. Edges and nodes are read from csv files and the assignment of classes is stored in output.csv (one row per node). The 10 edges are stored in the remove_vertices.json file. If that file already exists the included edge indices are removed before processing starts. 
 
 > [!NOTE] 
-> Please notice that the edge indices are incremental, e.g. you need to remove the first one before you can use the index of the second entry etc..
+> Edge indices are incremental, e.g. you need to remove the first index before you can use the index of the second entry.
 
 ![example run](https://github.com/HaukeBartsch/cutting-a-tree/raw/main/speed/images/example_run.gif)
 
