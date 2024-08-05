@@ -42,7 +42,7 @@ typedef std::map<std::string, tree_node_t > tree_t;
 std::string remove_file;
 json remove_vertices;
 
-void tokenize(std::string const &str, const char delim, std::vector<std::string> &out) { 
+void tokenize(std::string const &str, const char delim, std::vector<std::string> &out) {
   size_t start; size_t end = 0;
 
   while ((start = str.find_first_not_of(delim, end)) != std::string::npos) {
@@ -60,7 +60,7 @@ std::string trim(const std::string& str,
     const auto strEnd = str.find_last_not_of(whitespace);
     const auto strRange = strEnd - strBegin + 1;
 
-    return str.substr(strBegin, strRange); 
+    return str.substr(strBegin, strRange);
 }
 
 
@@ -68,7 +68,7 @@ vertices_t readVertices(std::string edges_file) {
     std::vector< std::pair<int, int> > vertices;
 
     std::ifstream file(edges_file);
-    std::string str; 
+    std::string str;
     std::vector< std::string > header;
     ptrdiff_t EndNodes_1_idx;
     ptrdiff_t EndNodes_2_idx;
@@ -106,13 +106,13 @@ std::pair<nodes_t, types_t> readNodes(std::string nodes_file) {
     std::vector< std::string > types;
 
     std::ifstream file(nodes_file);
-    std::string str; 
+    std::string str;
     std::vector< std::string > header;
     ptrdiff_t avx_1_idx;
     ptrdiff_t avx_2_idx;
     ptrdiff_t avx_3_idx;
     ptrdiff_t belongroot_idx;
-    
+
     while (std::getline(file, str)) {
         // remove \r from str
         str = trim(str);
@@ -186,13 +186,13 @@ std::array<float, 6> computeBounds(std::vector< node_t > nodes) {
             bounds[5] = nodes[i].avx_3;
     }
     float size = std::min(std::min(bounds[3]-bounds[0],bounds[4]-bounds[1]),bounds[5]-bounds[2]);
-    bounds[0] -= size*increase_by; 
+    bounds[0] -= size*increase_by;
     bounds[1] -= size*increase_by;
     bounds[2] -= size*increase_by;
-    bounds[3] += size*increase_by; 
+    bounds[3] += size*increase_by;
     bounds[4] += size*increase_by;
     bounds[5] += size*increase_by;
- 
+
     return bounds;
 }
 
@@ -399,6 +399,56 @@ void shuffle(std::vector<int> *array, std::mt19937 rgen) {
     }
 }
 
+// estimate the expected time (number of iterations) to reach a specific target
+class estimateExponential {
+    public:
+        std::vector< std::pair<float, float> > _data;
+        float curveA = 0.0f;
+        float curveB = 0.0f;
+        void insert(float x, float y) { // store only the last 10 results
+            _data.push_back(std::make_pair(x, y));
+            if (_data.size() > 30) {
+                _data.erase(_data.begin());
+            }
+        }
+        void clear() {
+            _data.resize(0);
+        }
+        void fit() {
+            int n,i;
+            n = _data.size();
+            std::vector<float> Y(n);
+            float sumx=0,sumy=0,sumxy=0,sumx2=0;
+            float a,b,A;
+            for (i=0; i <= n-1; i++) {
+                Y[i] = log(_data[i].second);
+            }
+            for (i=0; i <= n-1; i++) {
+                sumx += _data[i].first;
+                sumx2 += _data[i].first * _data[i].first;
+                sumy += Y[i];
+                sumxy += _data[i].first * Y[i];
+            }
+            A = ((sumx2*sumy - sumx*sumxy)*1.0/(n*sumx2 - sumx*sumx)*1.0);
+            b = ((n*sumxy - sumx*sumy)*1.0/(n*sumx2 - sumx*sumx)*1.0);
+            a = exp(A);
+
+            curveA = a;
+            curveB = b;
+            //printf("\n\n The curve is Y= %4.3fe^%4.3fX",a,b);
+        }
+
+        float estimateY(float x) {
+            fit();
+            return curveA* exp(curveB * x);
+        }
+        float estimateX(float y) {
+            fit();
+            return (std::log(y) - std::log(curveA)) / curveB;
+        }
+};
+
+
 // diffusionSteps is a part of the number of vertices so 0.5 is half the vertice many iterations
 std::vector< std::array<float, 3> > diffuse( types_t types, vertices_t vertices, std::map<int, int> numConnectionByPosition, float maxChange) {
 
@@ -434,13 +484,19 @@ std::vector< std::array<float, 3> > diffuse( types_t types, vertices_t vertices,
 
     double summed_change = 0.0; // change per iteration
     unsigned int num_valued = 0; // number of probs that are not 0/0
+    estimateExponential est; // estimate the time for finishing
 
     int numIters = types.size(); // * diffusionSteps;
     for (int iter = 0; iter < numIters; iter++) {
         if (iter % 10 == 0) {
+            int guessNumIters = 0;
+            if (iter > 0) {
+                guessNumIters = (int)est.estimateX(maxChange);
+                //fprintf(stderr, "Estimate for number of iteration required is now: %d\n", guessNumIters);
+            }
             boost::posix_time::ptime timeLocalEnd = boost::posix_time::microsec_clock::local_time();
             boost::posix_time::time_period tp(timeLocal, timeLocalEnd);
-            std::string time_left = boost::posix_time::to_simple_string( (timeLocalEnd - timeLocal)/iter * (numIters-iter) );
+            std::string time_left = boost::posix_time::to_simple_string( (timeLocalEnd - timeLocal)/(float)iter * (float)(guessNumIters-iter) );
             fprintf(stdout, "\033[0G\033[K%d/%d [ETA: %s, Δ%.04f (%.02f%%)]", iter, numIters, time_left.substr(0,8).c_str(), summed_change, 100*((float)num_valued/probs.size()));
             fflush(stdout);
             if (iter > 10 && summed_change < maxChange)
@@ -509,7 +565,7 @@ std::vector< std::array<float, 3> > diffuse( types_t types, vertices_t vertices,
                         [&](tbb::blocked_range<int> r) {
                 for (int i=r.begin(); i<r.end(); ++i) {
                     float s = (probs[i][0] + probs[i][1])/10.0;
-                    if (s > 0 && probs[i][2] != 1) { // not fixed 
+                    if (s > 0 && probs[i][2] != 1) { // not fixed
                         probs[i][0] /= s;
                         probs[i][1] /= s;
                     }
@@ -521,7 +577,7 @@ std::vector< std::array<float, 3> > diffuse( types_t types, vertices_t vertices,
             for (int i=r.begin(); i<r.end(); ++i) {
                 // make sure that probabilities sum up to 1 for each node
                 float s = (probs[i][0] + probs[i][1])*10.0;
-                if (s > 0 && probs[i][2] != 1) { // not fixed 
+                if (s > 0 && probs[i][2] != 1) { // not fixed
                     probs[i][0] /= s;
                     probs[i][1] /= s;
                 }
@@ -546,11 +602,12 @@ std::vector< std::array<float, 3> > diffuse( types_t types, vertices_t vertices,
             probs_tmp[idx][0] = probs[idx][0];
             probs_tmp[idx][1] = probs[idx][1];
         }
+        est.insert(iter, summed_change);
     }
     for (int i = 0; i < probs.size(); i++) {
         // make sure that probabilities sum up for each node
         float s = (probs[i][0] + probs[i][1]);
-        if (s > 0 && probs[i][2] != 1) { // not fixed 
+        if (s > 0 && probs[i][2] != 1) { // not fixed
             probs[i][0] /= s;
             probs[i][1] /= s;
         }
@@ -607,7 +664,7 @@ void computeOccupancy( std::map<std::string, tree_node_t > &tree, std::vector< s
         probs[1] = 0.0;
         for (int j = 0; j < node.children.size(); j++) {
             std::string typ = types[node.children[j]];
-            if (typ == "arterial") 
+            if (typ == "arterial")
                 probs[0]++;
             else if (typ == "venous")
                 probs[1]++;
@@ -702,7 +759,7 @@ bool isFullyConnected(vertices_t vertices, nodes_t nodes, int edge2remove) {
    /* var connectionByPoint = {}; */
     for (int i = 0; i < vertices.size(); i++) {
         if (edge2remove == i)
-            continue; // ignore this edge                                                                                             
+            continue; // ignore this edge
         int p1 = vertices[i].first-1;
         int p2 = vertices[i].second-1;
         if (connectionByPoint.find(p1) == connectionByPoint.end())
@@ -722,13 +779,13 @@ bool isFullyConnected(vertices_t vertices, nodes_t nodes, int edge2remove) {
     if (connectionByPoint[p1].size() == 1 || connectionByPoint[p2].size() == 1)
         return false; // removing that edge would orphan one node == disconnect the graph
 
-    // we have all points                                                                                                             
+    // we have all points
     int numPoints = nodes.size();
-    // do a tree traversal                                                                                                            
-    std::vector<int> queue; 
+    // do a tree traversal
+    std::vector<int> queue;
     queue.reserve(nodes.size());
-    queue.push_back(vertices[0].first-1); // start with one point                                                                           
-    std::set<int> visitedPoints; 
+    queue.push_back(vertices[0].first-1); // start with one point
+    std::set<int> visitedPoints;
     //visitedPoints.reserve(nodes.size());
     visitedPoints.insert(vertices[0].first-1);
 
@@ -739,7 +796,7 @@ bool isFullyConnected(vertices_t vertices, nodes_t nodes, int edge2remove) {
             int np = connectionByPoint[node][i];
             if (visitedPoints.find(np) == visitedPoints.end()) {
                 queue.push_back(connectionByPoint[node][i]);
-                // we visited this point now                                                                                          
+                // we visited this point now
                 visitedPoints.insert(np);
             }
         }
@@ -770,7 +827,7 @@ std::pair<vertices_t, types_t> step( nodes_t nodes, vertices_t vertices, types_t
             ++iter;
         }
         for (int i = 0; i < keys.size(); i++) {
-            summed_occupancy_score_before += std::abs(tree[keys[i]].probs[0] - tree[keys[i]].probs[1]);            
+            summed_occupancy_score_before += std::abs(tree[keys[i]].probs[0] - tree[keys[i]].probs[1]);
         }
     }
 
@@ -821,7 +878,7 @@ std::pair<vertices_t, types_t> step( nodes_t nodes, vertices_t vertices, types_t
             ++iter;
         }
         for (int i = 0; i < keys.size(); i++) {
-            summed_occupancy_score += std::abs(tree[keys[i]].probs[0] - tree[keys[i]].probs[1]);            
+            summed_occupancy_score += std::abs(tree[keys[i]].probs[0] - tree[keys[i]].probs[1]);
         }
     }
 
@@ -897,13 +954,17 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "version: %s\n", versionString.c_str());
     return 0;
   }
+  if (edges_file.empty() || nodes_file.empty()) {
+    std::cout << desc << std::endl;
+    return 0;
+  }
 
   if (!boost::filesystem::exists(edges_file)) {
-    fprintf(stderr, "Error: file for vertices (%s) does not exist.\n", edges_file.c_str());
+    fprintf(stderr, "Error: file for vertices (\"%s\") does not exist.\n", edges_file.c_str());
     exit(-1);
   }
   if (!boost::filesystem::exists(nodes_file)) {
-    fprintf(stderr, "Error: file for nodes (%s) does not exist.\n", nodes_file.c_str());
+    fprintf(stderr, "Error: file for nodes (\"%s\") does not exist.\n", nodes_file.c_str());
     exit(-1);
   }
 
@@ -916,6 +977,10 @@ int main(int argc, char *argv[]) {
   fprintf(stdout, "done reading nodes [%zu], types [%zu]\n", nodes.size(), types.size());
 
   // remove some vertices if we have a remove_file
+  // We need to make this work concurrently with other programs running the same algorithm.
+  // But this might be problematic. Two runs can remove conflicting vertices (disconnecting
+  // a part of the graph). We would need a process like a blockchain. Programs with many
+  // removals can add to the chain and extend it.
   if (boost::filesystem::exists(remove_file)) {
     std::ifstream ifs(remove_file);
     remove_vertices = json::parse(ifs);
@@ -961,7 +1026,7 @@ int main(int argc, char *argv[]) {
   // use output
   std::ofstream out(output);
   out << "NodeID,type" << std::endl;
-  for (int i = 0; i < newTypes.size(); i++) {
+  for (int i = 1; i < newTypes.size(); i++) {
     out << i << "," << newTypes[i] << std::endl;
   }
   out.close();
