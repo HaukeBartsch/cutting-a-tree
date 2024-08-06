@@ -687,12 +687,17 @@ void computeOccupancy( std::map<std::string, tree_node_t > &tree, std::vector< s
     });
 
     int l = 1;
+    int ll = 0;
     for (int i = 0; i < keys.size(); i++) {
-        if (keys[i].size() >= 4)
+        if (keys[i].size() > 4)
             continue; // ignore
         if (l < keys[i].size()) {
             fprintf(stdout, " "); // add a space whenever we change the scale
             l = keys[i].size();
+            if (keys[i].size() == 4) { // if we are at the last level start a new line
+                fprintf(stdout, "\n");
+                ll = i-1;
+            }
         }
         float a = tree[keys[i]].probs[0]; // arterial
         float b = tree[keys[i]].probs[1]; // venous
@@ -703,6 +708,9 @@ void computeOccupancy( std::map<std::string, tree_node_t > &tree, std::vector< s
             col = std::string("244m");
         }
         fprintf(stdout, "\033[0m\033[38;5;%s■\033[0m", col.c_str());
+        if (keys[i].size() == 4 && (i-ll) > 0 && ((i-ll) % 80) == 0) {
+            fprintf(stdout, "\n");
+        }
     }
     // if we compare the old probabilities with the new probabilities, how many switches do we observe?
     int num_switches = 0;
