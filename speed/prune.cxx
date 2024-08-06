@@ -935,7 +935,7 @@ int main(int argc, char *argv[]) {
       ("nodes,n", po::value< std::string >(&nodes_file), "The nodes csv file.")
       ("output,o", po::value<std::string>(&output), "Path to output csv file.")
       ("stopping,c", po::value<float>(&stop), "When to assume diffusion solution has converged based on summed overall change [default 0.3].")
-      ("remove_vertices,r", po::value<std::string>(&remove_file), "Path to a json that contains vertices that should be removed initially. This file will be updated continuously.")
+      ("remove_edges,r", po::value<std::string>(&remove_file), "Path to a json that contains edges that should be removed initially. This file will be updated continuously.")
       ("steps,s", po::value<int>(&steps), "Number of connections to remove.")
   ;
   // allow positional arguments to map to rawdata
@@ -968,7 +968,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (!boost::filesystem::exists(edges_file)) {
-    fprintf(stderr, "Error: file for vertices (\"%s\") does not exist.\n", edges_file.c_str());
+    fprintf(stderr, "Error: file for edges (\"%s\") does not exist.\n", edges_file.c_str());
     exit(-1);
   }
   if (!boost::filesystem::exists(nodes_file)) {
@@ -977,12 +977,12 @@ int main(int argc, char *argv[]) {
   }
 
   auto vertices = readVertices(edges_file);
-  fprintf(stdout, "done reading vertices [%zu]\n", vertices.size());
+  fprintf(stdout, " reading edges [%zu]\n", vertices.size());
 
   auto nodes_types = readNodes(nodes_file);
   auto nodes = nodes_types.first;
   auto types = nodes_types.second;
-  fprintf(stdout, "done reading nodes [%zu], types [%zu]\n", nodes.size(), types.size());
+  fprintf(stdout, " reading nodes [%zu], types [%zu]\n", nodes.size(), types.size());
 
   // remove some vertices if we have a remove_file
   // We need to make this work concurrently with other programs running the same algorithm.
@@ -992,7 +992,7 @@ int main(int argc, char *argv[]) {
   if (boost::filesystem::exists(remove_file)) {
     std::ifstream ifs(remove_file);
     remove_vertices = json::parse(ifs);
-    fprintf(stderr, "Remove known vertices before processing [%zu-%zu=%zu]\n", vertices.size(), remove_vertices.size(), vertices.size()-remove_vertices.size());
+    fprintf(stderr, "Remove known edges before processing [%zu-%zu=%zu]\n", vertices.size(), remove_vertices.size(), vertices.size()-remove_vertices.size());
     for (int i = 0; i < remove_vertices.size(); i++) {
         vertices.erase(vertices.begin() + remove_vertices[i]);
     }
