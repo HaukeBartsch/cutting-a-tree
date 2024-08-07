@@ -34,13 +34,13 @@ typedef struct {
 } tree_node_t;
 
 
-typedef std::vector< std::pair<int, int> > vertices_t;
+typedef std::vector< std::pair<int, int> > edges_t;
 typedef std::vector< std::string > types_t;
 typedef std::vector< node_t > nodes_t;
 typedef std::map<std::string, tree_node_t > tree_t;
 
 std::string remove_file;
-json remove_vertices;
+json remove_edges;
 
 void tokenize(std::string const &str, const char delim, std::vector<std::string> &out) {
   size_t start; size_t end = 0;
@@ -64,8 +64,8 @@ std::string trim(const std::string& str,
 }
 
 
-vertices_t readVertices(std::string edges_file) {
-    std::vector< std::pair<int, int> > vertices;
+edges_t readEdges(std::string edges_file) {
+    std::vector< std::pair<int, int> > edges;
 
     std::ifstream file(edges_file);
     std::string str;
@@ -92,13 +92,13 @@ vertices_t readVertices(std::string edges_file) {
         std::vector< std::string > pieces;
         tokenize(str, ',', pieces);
         if (pieces.size() != header.size()) {
-            fprintf(stderr, "strange line [%zu] found as: %s\n", vertices.size(), str.c_str());
+            fprintf(stderr, "strange line [%zu] found as: %s\n", edges.size(), str.c_str());
         } else {
-            vertices.push_back(std::make_pair<int, int>(std::stoi(pieces[EndNodes_1_idx]), std::stoi(pieces[EndNodes_2_idx])));
+            edges.push_back(std::make_pair<int, int>(std::stoi(pieces[EndNodes_1_idx]), std::stoi(pieces[EndNodes_2_idx])));
         }
     }
 
-    return vertices;
+    return edges;
 }
 
 std::pair<nodes_t, types_t> readNodes(std::string nodes_file) {
@@ -370,14 +370,14 @@ tree_t getQuadTree(std::vector< node_t > nodes, tree_t tree, std::string startLe
 }
 
 // no side-effects
-std::map<int, int> getNumConnectionByPosition( std::vector< node_t > positions, std::vector< std::pair<int, int> > vertices) {
+std::map<int, int> getNumConnectionByPosition( std::vector< node_t > positions, std::vector< std::pair<int, int> > edges) {
     std::map<int, int> numConnectionByPosition;
     for (int i = 0; i < positions.size(); i++) {
         numConnectionByPosition.insert({i, 0});
     }
-    for (int i = 0; i < vertices.size(); i++) {
-        numConnectionByPosition[vertices[i].first]++;
-        numConnectionByPosition[vertices[i].second]++;
+    for (int i = 0; i < edges.size(); i++) {
+        numConnectionByPosition[edges[i].first]++;
+        numConnectionByPosition[edges[i].second]++;
     }
     return numConnectionByPosition;
 }
@@ -450,7 +450,7 @@ class estimateExponential {
 
 
 // diffusionSteps is a part of the number of vertices so 0.5 is half the vertice many iterations
-std::vector< std::array<float, 3> > diffuse( types_t types, vertices_t vertices, std::map<int, int> numConnectionByPosition, float maxChange) {
+std::vector< std::array<float, 3> > diffuse( types_t types, edges_t vertices, std::map<int, int> numConnectionByPosition, float maxChange) {
 
     boost::posix_time::ptime timeLocal = boost::posix_time::microsec_clock::local_time();
 
@@ -724,7 +724,7 @@ void computeOccupancy( std::map<std::string, tree_node_t > &tree, std::vector< s
     fprintf(stdout, " %d switches\n", num_switches);
 }
 
-bool getEdgeCandidate(vertices_t vertices, int *edge2remove) {
+bool getEdgeCandidate(edges_t vertices, int *edge2remove) {
     std::map<int, std::vector<int> > connectionByPoint;
 
    /* var connectionByPoint = {}; */
@@ -761,7 +761,7 @@ bool getEdgeCandidate(vertices_t vertices, int *edge2remove) {
 
 // TODO: it would be better to compute the partitions and return those
 // Would be fully connected if the edge2remove is removed.
-bool isFullyConnected(vertices_t vertices, nodes_t nodes, int edge2remove) {
+bool isFullyConnected(edges_t vertices, nodes_t nodes, int edge2remove) {
     std::map<int, std::vector<int> > connectionByPoint;
 
    /* var connectionByPoint = {}; */
@@ -814,7 +814,7 @@ bool isFullyConnected(vertices_t vertices, nodes_t nodes, int edge2remove) {
     return false;
 }
 
-std::pair<vertices_t, types_t> step( nodes_t nodes, vertices_t vertices, types_t types, tree_t tree, std::map< int, int> &numConnectionByPosition, float stop) {
+std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types, tree_t tree, std::map< int, int> &numConnectionByPosition, float stop) {
 
     //auto numConnectionByPositionBefore = getNumConnectionByPosition(nodes, vertices); // updated vertices
     auto numConnectionByPositionBefore = numConnectionByPosition;
@@ -893,10 +893,10 @@ std::pair<vertices_t, types_t> step( nodes_t nodes, vertices_t vertices, types_t
     if (summed_occupancy_score <= summed_occupancy_score_before) {
         fprintf(stdout, "remove vertex %d as it makes our graph more or equally balanced.. [%zu, score: %.04f, %.04f]\n", idx_2_remove, verticesNew.size(), summed_occupancy_score, summed_occupancy_score_before-summed_occupancy_score);
         numConnectionByPosition = numConnectionByPositionAfter;
-        remove_vertices.push_back(idx_2_remove);
+        remove_edges.push_back(idx_2_remove);
         if (boost::filesystem::exists(remove_file)) {
           std::ofstream out(remove_file);
-          out << remove_vertices;
+          out << remove_edges;
         }
         return std::make_pair(verticesNew, newTypes);
     }
@@ -976,7 +976,7 @@ int main(int argc, char *argv[]) {
     exit(-1);
   }
 
-  auto vertices = readVertices(edges_file);
+  auto vertices = readEdges(edges_file);
   fprintf(stdout, " reading edges [%zu]\n", vertices.size());
 
   auto nodes_types = readNodes(nodes_file);
@@ -991,10 +991,10 @@ int main(int argc, char *argv[]) {
   // removals can add to the chain and extend it.
   if (boost::filesystem::exists(remove_file)) {
     std::ifstream ifs(remove_file);
-    remove_vertices = json::parse(ifs);
-    fprintf(stderr, "Remove known edges before processing [%zu-%zu=%zu]\n", vertices.size(), remove_vertices.size(), vertices.size()-remove_vertices.size());
-    for (int i = 0; i < remove_vertices.size(); i++) {
-        vertices.erase(vertices.begin() + remove_vertices[i]);
+    remove_edges = json::parse(ifs);
+    fprintf(stderr, "Remove known edges before processing [%zu-%zu=%zu]\n", vertices.size(), remove_edges.size(), vertices.size()-remove_edges.size());
+    for (int i = 0; i < remove_edges.size(); i++) {
+        vertices.erase(vertices.begin() + remove_edges[i]);
     }
   }
 
@@ -1042,7 +1042,7 @@ int main(int argc, char *argv[]) {
   // if we have a remove vertices file, write out our updated list
   if (boost::filesystem::exists(remove_file)) {
     std::ofstream out(remove_file);
-    out << remove_vertices;
+    out << remove_edges;
   }
 
 }
