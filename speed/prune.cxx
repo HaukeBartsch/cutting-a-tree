@@ -721,7 +721,50 @@ void computeOccupancy( std::map<std::string, tree_node_t > &tree, std::vector< s
         if ( ((0.0f < a) - (a < 0.0f)) != ((0.0f < b) - (b < 0.0f)) )
             num_switches++;
     }
-    fprintf(stdout, " %d switches\n", num_switches);
+    fprintf(stdout, " %d switch%s\n", num_switches, (num_switches != 1)?"es":"");
+}
+
+// get numCandidates of edge candidates
+bool getEdgeCandidates(edges_t vertices, std::map<int,bool> *edges2remove, int numCandidates) {
+    std::map<int, std::vector<int> > connectionByPoint;
+    (*edges2remove).clear();
+
+   /* var connectionByPoint = {}; */
+    for (int i = 0; i < vertices.size(); i++) {
+        int p1 = vertices[i].first-1;
+        int p2 = vertices[i].second-1;
+        if (connectionByPoint.find(p1) == connectionByPoint.end())
+            connectionByPoint.insert(std::make_pair(p1, std::vector<int>()));
+        if (std::find(connectionByPoint[p1].begin(), connectionByPoint[p1].end(), p2) == std::end(connectionByPoint[p1]))
+            connectionByPoint[p1].push_back(p2);
+        if (connectionByPoint.find(p2) == connectionByPoint.end())
+            connectionByPoint.insert(std::make_pair(p2, std::vector<int>()));
+        if (std::find(connectionByPoint[p2].begin(), connectionByPoint[p2].end(), p1) == std::end(connectionByPoint[p2]))
+            connectionByPoint[p2].push_back(p1);
+    }
+
+    // one short cut would be if one of the two points do not have other neighbors anymore,
+    // in that case we know its now disconnected
+    std::vector<int> edgeCandidates;
+    for (int i = 0; i < vertices.size(); i++) {
+        int p1 = vertices[i].first-1;
+        int p2 = vertices[i].second-1;
+        if (connectionByPoint[p1].size() != 1 && connectionByPoint[p2].size() != 1)
+            edgeCandidates.push_back(i);
+    }
+    if (edgeCandidates.size() > 0) {
+        // return numCandidates random edge candidates
+        std::srand(std::time(nullptr));
+        for (int i = 0 ; i < numCandidates; i++) {
+             std::pair <std::map<int, bool>::iterator, bool> ptr = (*edges2remove).insert( std::pair(edgeCandidates[std::rand() % edgeCandidates.size()], true) );
+             if (!ptr.second) {
+                // key was already in the map, can we do it again?
+                fprintf(stdout, "Info: key already in map, ignore and do the next");
+             }
+        }
+        return true;
+    }
+    return false; // none found
 }
 
 bool getEdgeCandidate(edges_t vertices, int *edge2remove) {
@@ -814,6 +857,68 @@ bool isFullyConnected(edges_t vertices, nodes_t nodes, int edge2remove) {
     return false;
 }
 
+// TODO: it would be better to compute the partitions and return those
+// Would be fully connected if the edge2remove is removed.
+bool isFullyConnected(edges_t vertices, nodes_t nodes, std::map<int, bool> edges2remove) {
+    std::map<int, std::vector<int> > connectionByPoint;
+
+   /* var connectionByPoint = {}; */
+    for (int i = 0; i < vertices.size(); i++) {
+        auto it = edges2remove.find(i);
+        if (it != edges2remove.end())
+            continue; // ignore all edges that are in the remove list
+        int p1 = vertices[i].first-1;
+        int p2 = vertices[i].second-1;
+        if (connectionByPoint.find(p1) == connectionByPoint.end())
+            connectionByPoint.insert(std::make_pair(p1, std::vector<int>()));
+        if (std::find(connectionByPoint[p1].begin(), connectionByPoint[p1].end(), p2) == std::end(connectionByPoint[p1]))
+            connectionByPoint[p1].push_back(p2);
+        if (connectionByPoint.find(p2) == connectionByPoint.end())
+            connectionByPoint.insert(std::make_pair(p2, std::vector<int>()));
+        if (std::find(connectionByPoint[p2].begin(), connectionByPoint[p2].end(), p1) == std::end(connectionByPoint[p2]))
+            connectionByPoint[p2].push_back(p1);
+    }
+
+    // one short cut would be if one of the two points do not have other neighbors anymore,
+    // in that case we know its now disconnected
+    std::map<int, bool>::iterator it;
+    for (it = edges2remove.begin(); it != edges2remove.end(); it++) {
+        int edge2remove = it->first;
+        int p1 = vertices[edge2remove].first-1;
+        int p2 = vertices[edge2remove].second-1;
+        if (connectionByPoint[p1].size() == 1 || connectionByPoint[p2].size() == 1)
+            return false; // removing that edge would orphan one node == disconnect the graph
+    }
+    // we have all points
+    int numPoints = nodes.size();
+    // do a tree traversal
+    std::vector<int> queue;
+    queue.reserve(nodes.size());
+    queue.push_back(vertices[0].first-1); // start with one point
+    std::set<int> visitedPoints;
+    //visitedPoints.reserve(nodes.size());
+    visitedPoints.insert(vertices[0].first-1);
+
+    while(queue.size() > 0) {
+        int node = queue.back();
+        queue.pop_back();
+        for (int i = 0; i < connectionByPoint[node].size(); i++) {
+            int np = connectionByPoint[node][i];
+            if (visitedPoints.find(np) == visitedPoints.end()) {
+                queue.push_back(connectionByPoint[node][i]);
+                // we visited this point now
+                visitedPoints.insert(np);
+            }
+        }
+    }
+    if (visitedPoints.size() == numPoints)
+        return true;
+    return false;
+}
+
+// startup value for the number of candidates we will try to remove (on success increase)
+int numCandidates = 10;
+
 std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types, tree_t tree, std::map< int, int> &numConnectionByPosition, float stop) {
 
     //auto numConnectionByPositionBefore = getNumConnectionByPosition(nodes, vertices); // updated vertices
@@ -840,19 +945,27 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
     }
 
     int idx_2_remove = -1;
+    std::map<int, bool> ids_2_remove; // use a map to have faster access
     int max_attempts = 100; // how often to we try to find a vertex that after removing keeps a fully connected graph
     int attempt = 0;
     while (idx_2_remove == -1) {
-        if (!getEdgeCandidate(vertices, &idx_2_remove)) { // randomly draw an edge
+//        if (!getEdgeCandidate(vertices, &idx_2_remove)) { // randomly draw an edge
+        if (!getEdgeCandidates(vertices, &ids_2_remove, numCandidates)) {
             fprintf(stderr, "Removing any edge would split this graph... giving up.\n");
             // but write out the resulting types for all nodes
             exit(-1);
         }
-        if (!isFullyConnected(vertices, nodes, idx_2_remove)) { // lets pick another one ++ But we want to have two graphs that are not connected with each other...
-            fprintf(stdout, "removing vertex %d [%d<->%d] makes graph disconnected.. [%zu]\n", idx_2_remove, vertices[idx_2_remove].first-1, vertices[idx_2_remove].second-1, vertices.size());
-
+        idx_2_remove = 0; // mark as perhaps ok
+        if (!isFullyConnected(vertices, nodes, ids_2_remove)) { // lets pick another one ++ But we want to have two graphs that are not connected with each other...
+            std::map<int, bool>::iterator it;
+            std::string vlist = "";
+            for (it = ids_2_remove.begin(); it != ids_2_remove.end(); it++) {
+                idx_2_remove = it->first;
+                vlist += std::to_string(idx_2_remove) + ", ";
+            }
+            fprintf(stdout, "removing vertex list %s makes graph disconnected.. [%zu]\n", vlist.c_str(), vertices.size());
             numConnectionByPosition = numConnectionByPositionBefore;
-            idx_2_remove = -1;
+            idx_2_remove = -1; // try again
         }
         if (attempt > max_attempts) {
             fprintf(stdout, "Info: Max number of attempts to find an edge candidate, giving up.\n");
@@ -861,7 +974,15 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
     }
 
     auto verticesNew = vertices;
-    verticesNew.erase(verticesNew.begin() + idx_2_remove);
+    std::vector<int> listOfEdgesToRemove;
+    std::map<int, bool>::iterator it; // to delete the vertices we need to 
+    for (it = ids_2_remove.begin(); it != ids_2_remove.end(); it++) {
+        listOfEdgesToRemove.push_back(it->first);
+    }
+    std::sort(listOfEdgesToRemove.begin(), listOfEdgesToRemove.end(), std::greater<>());
+    for (int i = 0; i < listOfEdgesToRemove.size(); i++) { // erase the largest index first to keep order
+        verticesNew.erase(verticesNew.begin() + listOfEdgesToRemove[i]);
+    }
 
     auto numConnectionByPositionAfter = getNumConnectionByPosition(nodes, verticesNew);
     auto probs = diffuse(types, verticesNew, numConnectionByPositionAfter, stop);
@@ -891,17 +1012,23 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
     }
 
     if (summed_occupancy_score <= summed_occupancy_score_before) {
-        fprintf(stdout, "remove vertex %d as it makes our graph more or equally balanced.. [%zu, score: %.04f, %.04f]\n", idx_2_remove, verticesNew.size(), summed_occupancy_score, summed_occupancy_score_before-summed_occupancy_score);
+        fprintf(stdout, "remove %zu %s, graph now more or equally balanced.. [%zu, score: %.04f, %.04f]\n", listOfEdgesToRemove.size(), listOfEdgesToRemove.size()!=1?"vertices":"vertex", verticesNew.size(), summed_occupancy_score, summed_occupancy_score_before-summed_occupancy_score);
         numConnectionByPosition = numConnectionByPositionAfter;
-        remove_edges.push_back(idx_2_remove);
+        for (int i = 0; i < listOfEdgesToRemove.size(); i++) {
+            remove_edges.push_back(listOfEdgesToRemove[i]);
+        }
         if (boost::filesystem::exists(remove_file)) {
           std::ofstream out(remove_file);
           out << remove_edges;
         }
+        // adjust numCandidates
+        numCandidates = listOfEdgesToRemove.size() + 10;
+        if (numCandidates < 1)
+            numCandidates = 1; // nothing lower
         return std::make_pair(verticesNew, newTypes);
     }
 
-    fprintf(stdout, "removing vertex %d would make our graph less balanced, undo now [%zu]\n", idx_2_remove, verticesNew.size());
+    fprintf(stdout, "removing current list of %zu vertices would make our graph less balanced, undo now [%zu]\n", listOfEdgesToRemove.size(), verticesNew.size());
     // get our old probs back in the tree for the next iteration
     iter = tree.begin();
     while (iter != tree.end()) {
@@ -909,6 +1036,9 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
         tree[iter->first].probs[1] = old_probs[iter->first][1]; // .insert(std::make_pair(iter->first, std::array<float, 2>({ iter->second.probs[0], iter->second.probs[1] })));
         ++iter;
     }
+    numCandidates = listOfEdgesToRemove.size() - 10; // reduce the number because we failed
+    if (numCandidates < 1)
+        numCandidates = 1; // nothing lower
 
     return std::make_pair(vertices, types);
 }
