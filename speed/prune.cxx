@@ -959,12 +959,17 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
         if (!isFullyConnected(vertices, nodes, ids_2_remove)) { // lets pick another one ++ But we want to have two graphs that are not connected with each other...
             std::map<int, bool>::iterator it;
             std::string vlist = "";
-            for (it = ids_2_remove.begin(); it != ids_2_remove.end(); it++) {
+            int counts = 0;
+            for (it = ids_2_remove.begin(); it != ids_2_remove.end() && counts < 3; it++) {
                 idx_2_remove = it->first;
                 vlist += std::to_string(idx_2_remove) + ", ";
+                counts++;
             }
-            fprintf(stdout, "removing vertex list %s makes graph disconnected.. [%zu]\n", vlist.c_str(), vertices.size());
+            fprintf(stdout, " vertex list for removal [#%zu] %s... makes graph disconnected. Undo and try again. [%zu]\n", ids_2_remove.size(), vlist.c_str(), vertices.size());
             numConnectionByPosition = numConnectionByPositionBefore;
+            numCandidates--; // if getting a list is difficult try with a smaller list
+            if (numCandidates < 1)
+                numCandidates = 1;
             idx_2_remove = -1; // try again
         }
         if (attempt > max_attempts) {
@@ -1012,7 +1017,7 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
     }
 
     if (summed_occupancy_score <= summed_occupancy_score_before) {
-        fprintf(stdout, "remove %zu %s, graph now more or equally balanced.. [%zu, score: %.04f, %.04f]\n", listOfEdgesToRemove.size(), listOfEdgesToRemove.size()!=1?"vertices":"vertex", verticesNew.size(), summed_occupancy_score, summed_occupancy_score_before-summed_occupancy_score);
+        fprintf(stdout, "remove %zu %s, graph is now more so or equally well balanced. [%zu, score: %.04f, %.04f]\n", listOfEdgesToRemove.size(), listOfEdgesToRemove.size()!=1?"vertices":"vertex", verticesNew.size(), summed_occupancy_score, summed_occupancy_score_before-summed_occupancy_score);
         numConnectionByPosition = numConnectionByPositionAfter;
         for (int i = 0; i < listOfEdgesToRemove.size(); i++) {
             remove_edges.push_back(listOfEdgesToRemove[i]);
@@ -1066,7 +1071,7 @@ int main(int argc, char *argv[]) {
       ("output,o", po::value<std::string>(&output), "Path to output csv file.")
       ("stopping,c", po::value<float>(&stop), "When to assume diffusion solution has converged based on summed overall change [default 0.3].")
       ("remove_edges,r", po::value<std::string>(&remove_file), "Path to a json that contains edges that should be removed initially. This file will be updated continuously.")
-      ("steps,s", po::value<int>(&steps), "Number of connections to remove.")
+      ("steps,s", po::value<int>(&steps), "Number of attempts to remove an edge list. An edge list starts with 10 random edges. If the graph is no longer fully connected the number of random edges is reduced by 1 and we try again to find a list. If the graph is fully connected we check if the graph improved. If yes the list of edges are removed and in the next iteration 10 additional edges (for a total of 20) are drawn and the next step is started. This adaptive adjustment of the number of edges accellerates the pruning.")
   ;
   // allow positional arguments to map to rawdata
   po::positional_options_description p;
