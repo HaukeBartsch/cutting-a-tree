@@ -48,18 +48,18 @@ Test the build by calling prune:
 ```bash
 ❯ ./prune
 Allowed options:
-  -h [ --help ]                prune: Run a diffusion quad-tree pruning on a
-                               given graph.
-  -V [ --version ]             Print the version number.
-  -v [ --verbose ]             Print more verbose output during processing.
-  -e [ --edges ] arg           The edges csv file.
-  -n [ --nodes ] arg           The nodes csv file.
-  -o [ --output ] arg          Path to output csv file.
-  -c [ --stopping ] arg        When to assume diffusion solution has converged
-                               based on summed overall change [default 0.3].
-  -r [ --remove_vertices ] arg Path to a json that contains vertices that
-                               should be removed initially. This file will be
-                               updated continuously.
-  -s [ --steps ] arg           Number of connections to remove.
+  -h [ --help ]             prune: Run a diffusion quad-tree pruning on a
+                            given graph.
+  -V [ --version ]          Print the version number.
+  -v [ --verbose ]          Print more verbose output during processing.
+  -e [ --edges ] arg        The edges csv file.
+  -n [ --nodes ] arg        The nodes csv file.
+  -o [ --output ] arg       Path to output csv file.
+  -c [ --stopping ] arg     When to assume diffusion solution has converged
+                            based on summed overall change [default 0.3].
+  -r [ --remove_edges ] arg Path to a json that contains edges that
+                            should be removed initially. This file will be
+                            updated continuously.
+  -s [ --steps ] arg        Number of connections to remove.
 
 ```

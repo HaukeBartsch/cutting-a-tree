@@ -41,6 +41,8 @@ typedef std::map<std::string, tree_node_t > tree_t;
 
 std::string remove_file;
 json remove_edges;
+int max_num_edges = -1; // to remove per step
+
 
 void tokenize(std::string const &str, const char delim, std::vector<std::string> &out) {
   size_t start; size_t end = 0;
@@ -759,7 +761,7 @@ bool getEdgeCandidates(edges_t vertices, std::map<int,bool> *edges2remove, int n
              std::pair <std::map<int, bool>::iterator, bool> ptr = (*edges2remove).insert( std::pair(edgeCandidates[std::rand() % edgeCandidates.size()], true) );
              if (!ptr.second) {
                 // key was already in the map, can we do it again?
-                fprintf(stdout, "Info: key already in map, ignore and do the next");
+                fprintf(stdout, "Info: key already in map, ignore and do the next\n");
              }
         }
         return true;
@@ -919,6 +921,29 @@ bool isFullyConnected(edges_t vertices, nodes_t nodes, std::map<int, bool> edges
 // startup value for the number of candidates we will try to remove (on success increase)
 int numCandidates = 10;
 
+int getNumCandidates() {
+    if (max_num_edges > 0)
+        numCandidates = max_num_edges;
+    return numCandidates;
+}
+void decreaseNumCandidates(int howmuch = 1) {
+    if (max_num_edges > 0) {
+        numCandidates = max_num_edges;
+        return; // nothing to do
+    }
+    numCandidates-=howmuch;
+    if (numCandidates < 1) {
+        numCandidates = 1;
+    }
+}
+void increaseNumCandidates() {
+    if (max_num_edges > 0) {
+        numCandidates = max_num_edges;
+        return;
+    }
+    numCandidates+=10;
+}
+
 std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types, tree_t tree, std::map< int, int> &numConnectionByPosition, float stop) {
 
     //auto numConnectionByPositionBefore = getNumConnectionByPosition(nodes, vertices); // updated vertices
@@ -950,7 +975,7 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
     int attempt = 0;
     while (idx_2_remove == -1) {
 //        if (!getEdgeCandidate(vertices, &idx_2_remove)) { // randomly draw an edge
-        if (!getEdgeCandidates(vertices, &ids_2_remove, numCandidates)) {
+        if (!getEdgeCandidates(vertices, &ids_2_remove, getNumCandidates())) {
             fprintf(stderr, "Removing any edge would split this graph... giving up.\n");
             // but write out the resulting types for all nodes
             exit(-1);
@@ -967,9 +992,7 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
             }
             fprintf(stdout, " vertex list for removal [#%zu] %s... makes graph disconnected. Undo and try again. [%zu]\n", ids_2_remove.size(), vlist.c_str(), vertices.size());
             numConnectionByPosition = numConnectionByPositionBefore;
-            numCandidates--; // if getting a list is difficult try with a smaller list
-            if (numCandidates < 1)
-                numCandidates = 1;
+            decreaseNumCandidates(); // if getting a list is difficult try with a smaller list
             idx_2_remove = -1; // try again
         }
         if (attempt > max_attempts) {
@@ -1016,8 +1039,11 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
         }
     }
 
-    if (summed_occupancy_score <= summed_occupancy_score_before) {
-        fprintf(stdout, "remove %zu %s, graph is now more so or equally well balanced. [%zu, score: %.04f, %.04f]\n", listOfEdgesToRemove.size(), listOfEdgesToRemove.size()!=1?"vertices":"vertex", verticesNew.size(), summed_occupancy_score, summed_occupancy_score_before-summed_occupancy_score);
+    if (summed_occupancy_score < summed_occupancy_score_before) {
+        std::string qualifier("so or equally well");
+        if (summed_occupancy_score != summed_occupancy_score_before)
+            qualifier = std::string("");
+        fprintf(stdout, "\033[0;32mremove %zu %s\033[0m, graph is now more %s balanced. [%zu, score: %.04f, %.04f]\n", listOfEdgesToRemove.size(), listOfEdgesToRemove.size()!=1?"vertices":"vertex", qualifier.c_str(), verticesNew.size(), summed_occupancy_score, summed_occupancy_score_before-summed_occupancy_score);
         numConnectionByPosition = numConnectionByPositionAfter;
         for (int i = 0; i < listOfEdgesToRemove.size(); i++) {
             remove_edges.push_back(listOfEdgesToRemove[i]);
@@ -1027,13 +1053,11 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
           out << remove_edges;
         }
         // adjust numCandidates
-        numCandidates = listOfEdgesToRemove.size() + 10;
-        if (numCandidates < 1)
-            numCandidates = 1; // nothing lower
+        increaseNumCandidates();
         return std::make_pair(verticesNew, newTypes);
     }
 
-    fprintf(stdout, "removing current list of %zu vertices would make our graph less balanced, undo now [%zu]\n", listOfEdgesToRemove.size(), verticesNew.size());
+    fprintf(stdout, "\033[0;31mremoving current list of %zu vertices would make our graph less balanced, undo now [%zu]\033[0m\n", listOfEdgesToRemove.size(), verticesNew.size());
     // get our old probs back in the tree for the next iteration
     iter = tree.begin();
     while (iter != tree.end()) {
@@ -1041,10 +1065,7 @@ std::pair<edges_t, types_t> step( nodes_t nodes, edges_t vertices, types_t types
         tree[iter->first].probs[1] = old_probs[iter->first][1]; // .insert(std::make_pair(iter->first, std::array<float, 2>({ iter->second.probs[0], iter->second.probs[1] })));
         ++iter;
     }
-    numCandidates = listOfEdgesToRemove.size() - 10; // reduce the number because we failed
-    if (numCandidates < 1)
-        numCandidates = 1; // nothing lower
-
+    decreaseNumCandidates(10);
     return std::make_pair(vertices, types);
 }
 
@@ -1069,9 +1090,10 @@ int main(int argc, char *argv[]) {
       ("edges,e", po::value< std::string >(&edges_file), "The edges csv file.")
       ("nodes,n", po::value< std::string >(&nodes_file), "The nodes csv file.")
       ("output,o", po::value<std::string>(&output), "Path to output csv file.")
-      ("stopping,c", po::value<float>(&stop), "When to assume diffusion solution has converged based on summed overall change [default 0.3].")
+      ("stopping,c", po::value<float>(&stop), "When to assume diffusion solution has converged based on summed absolute overall change [default 0.3].")
+      ("max_edges,m", po::value<int>(&max_num_edges), "Maximum number of edges to remove in one step. If <1 an adaptive algorithm is used (default -1).")
       ("remove_edges,r", po::value<std::string>(&remove_file), "Path to a json that contains edges that should be removed initially. This file will be updated continuously.")
-      ("steps,s", po::value<int>(&steps), "Number of attempts to remove an edge list. An edge list starts with 10 random edges. If the graph is no longer fully connected the number of random edges is reduced by 1 and we try again to find a list. If the graph is fully connected we check if the graph improved. If yes the list of edges are removed and in the next iteration 10 additional edges (for a total of 20) are drawn and the next step is started. This adaptive adjustment of the number of edges accellerates the pruning.")
+      ("steps,s", po::value<int>(&steps), "Number of attempts to remove an edge list. Only used if max_edges is <1. An edge list starts with 10 random edges. If the graph is no longer fully connected the number of random edges is reduced by 1 and we try again to find a list. If the graph is fully connected we check if the graph improved. If yes the list of edges are removed and in the next iteration 10 additional edges (for a total of 20) are drawn and the next step is started.")
   ;
   // allow positional arguments to map to rawdata
   po::positional_options_description p;
@@ -1175,9 +1197,11 @@ int main(int argc, char *argv[]) {
   out.close();
 
   // if we have a remove vertices file, write out our updated list
-  if (boost::filesystem::exists(remove_file)) {
+//  if (boost::filesystem::exists(remove_file)) {
+  {
     std::ofstream out(remove_file);
     out << remove_edges;
   }
+//  }
 
 }
